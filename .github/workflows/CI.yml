@@ -17,7 +17,7 @@ jobs:
       matrix:
         # Primary build on latest macOS and its default Xcode version
         os: [ "macos-latest" ]
-        platform: [ "all", "macos", "ios" ]
+        platform: [ "visionos" ]
         upload_artifacts: [ true ]
         select_xcode: [ false ]
 
