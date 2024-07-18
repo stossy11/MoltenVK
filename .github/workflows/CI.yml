@@ -81,7 +81,7 @@ jobs:
       - name: Fetch Dependencies
         if: steps.cache-dependencies.outputs.cache-hit != 'true'
         run: |
-          ./fetchDependencies -v --${{ matrix.platform }}
+          ./fetchDependencies -v --visionos --ios
 
       - name: Output Dependency Build Logs on Failure
         if: failure()
