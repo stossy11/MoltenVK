@@ -2462,9 +2462,7 @@ void MVKPhysicalDevice::initMetalFeatures() {
 
 	// Metal argument buffer support for descriptor sets is supported on macOS 11.0 or later,
 	// or on older versions of macOS using an Intel GPU, or on iOS & tvOS 16.0 or later (Metal 3).
-	_metalFeatures.descriptorSetArgumentBuffers = (_metalFeatures.argumentBuffers &&
-												   (mvkOSVersionIsAtLeast(11.0, 16.0, 1.0) ||
-													_properties.vendorID == kIntelVendorId));
+    _metalFeatures.descriptorSetArgumentBuffers = _metalFeatures.argumentBuffers;
 
 	// Argument encoders are not needed if Metal 3 plus Tier 2 argument buffers.
 #if MVK_XCODE_14
@@ -2555,6 +2553,11 @@ void MVKPhysicalDevice::initFeatures() {
 
 #if MVK_IOS
     _features.textureCompressionETC2 = true;
+    _features.occlusionQueryPrecise = true;
+    _features.imageCubeArray = true;
+    _features.depthClamp = true;
+    _features.vertexPipelineStoresAndAtomics = true;
+    _features.fragmentStoresAndAtomics = true;
 
     if (supportsMTLGPUFamily(Apple2)) {
         _features.textureCompressionASTC_LDR = true;
