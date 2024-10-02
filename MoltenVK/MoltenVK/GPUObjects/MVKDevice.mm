@@ -3289,7 +3289,7 @@ uint64_t MVKPhysicalDevice::getRecommendedMaxWorkingSetSize() {
 }
 
 // If possible, retrieve from the MTLDevice, otherwise use the current memory used by this process.
-uint64_t MVKPhysicalDevice::getCurrentAllocatedSize() {
+size_t MVKPhysicalDevice::getCurrentAllocatedSize() {
 	if ( [_mtlDevice respondsToSelector: @selector(currentAllocatedSize)] ) {
 		return _mtlDevice.currentAllocatedSize;
 	}
