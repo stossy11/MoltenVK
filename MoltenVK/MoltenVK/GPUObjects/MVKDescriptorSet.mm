@@ -302,7 +302,7 @@ bool MVKDescriptorSetLayout::populateBindingUse(MVKBitArray& bindingUse,
 }
 
 bool MVKDescriptorSetLayout::isUsingMetalArgumentBuffers() {
-	return MVKDeviceTrackingMixin::isUsingMetalArgumentBuffers() && _canUseMetalArgumentBuffer;
+	return true;
 };
 
 // Returns an autoreleased MTLArgumentDescriptor suitable for adding an auxiliary buffer to the argument buffer.
@@ -432,21 +432,18 @@ std::string MVKDescriptorSetLayout::getLogDescription(std::string indent) {
 bool MVKDescriptorSetLayout::checkCanUseArgumentBuffers(const VkDescriptorSetLayoutCreateInfo* pCreateInfo) {
 
 // iOS Tier 1 argument buffers do not support writable images.
-#if MVK_IOS_OR_TVOS
-	if (getMetalFeatures().argumentBuffersTier < MTLArgumentBuffersTier2) {
-		for (uint32_t bindIdx = 0; bindIdx < pCreateInfo->bindingCount; bindIdx++) {
-			switch (pCreateInfo->pBindings[bindIdx].descriptorType) {
-				case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-				case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
-					return false;
-				default:
-					break;
-			}
-		}
-	}
-#endif
+    for (uint32_t bindIdx = 0; bindIdx < pCreateInfo->bindingCount; bindIdx++) {
+        switch (pCreateInfo->pBindings[bindIdx].descriptorType) {
+            case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+            case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
+                return false;
+            default:
+                break;
+        }
+    }
 
-	return !_isPushDescriptorLayout;	// Push descriptors don't use argument buffers
+    return true;
+	// return !_isPushDescriptorLayout;	// Push descriptors don't use argument buffers
 }
 
 

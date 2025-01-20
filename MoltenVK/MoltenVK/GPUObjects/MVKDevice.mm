@@ -2464,15 +2464,12 @@ void MVKPhysicalDevice::initMetalFeatures() {
 
 	// Argument encoders are not needed if Metal 3 plus Tier 2 argument buffers.
 #if MVK_XCODE_14
-	_metalFeatures.needsArgumentBufferEncoders = (_metalFeatures.argumentBuffers &&
-												  !(mvkOSVersionIsAtLeast(13.0, 16.0, 1.0) &&
-													supportsMTLGPUFamily(Metal3) &&
-													_metalFeatures.argumentBuffersTier >= MTLArgumentBuffersTier2));
+    _metalFeatures.needsArgumentBufferEncoders = _metalFeatures.argumentBuffers;
 #else
 	_metalFeatures.needsArgumentBufferEncoders = _metalFeatures.argumentBuffers;
 #endif
 
-	_isUsingMetalArgumentBuffers = _metalFeatures.descriptorSetArgumentBuffers && getMVKConfig().useMetalArgumentBuffers;;
+	_isUsingMetalArgumentBuffers = true;
 
 #define checkSupportsMTLCounterSamplingPoint(mtlSP, mvkSP)  \
 	if ([_mtlDevice respondsToSelector: @selector(supportsCounterSampling:)] &&  \
