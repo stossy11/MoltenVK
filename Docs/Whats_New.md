@@ -13,6 +13,19 @@ Copyright (c) 2015-2024 [The Brenwill Workshop Ltd.](http://www.brenwill.com)
 
 
 
+MoltenVK 1.2.12
+---------------
+
+Released TBD
+
+- Fix _SPIRV-Cross_ namespace build error on some alternate build environments.
+- Fix recent failure of `CI.yml` to upload release build artifacts to GitHub.
+- Remove support for deprecated `VK_NV_glsl_shader` extension, and GLSL conversions using _**MoltenVKShaderConverter**_.
+- Update to latest SPIRV-Cross:
+  - MSL: Pad array elements in Metal argument buffer when shader declares scalar.
+
+
+
 MoltenVK 1.2.11
 ---------------
 

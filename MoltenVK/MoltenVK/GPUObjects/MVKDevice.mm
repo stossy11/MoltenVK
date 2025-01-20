@@ -1595,7 +1595,7 @@ VkResult MVKPhysicalDevice::getSurfaceFormats(MVKSurface* surface,
 	addSurfFmt(RGBA16Float);
 	addSurfFmt(RGB10A2Unorm);
 	addSurfFmt(BGR10A2Unorm);
-#if MVK_APPLE_SILICON
+#if MVK_APPLE_SILICON && !MVK_OS_SIMULATOR
 	addSurfFmt(BGRA10_XR);
 	addSurfFmt(BGRA10_XR_sRGB);
 	addSurfFmt(BGR10_XR);
@@ -2146,11 +2146,8 @@ void MVKPhysicalDevice::initMetalFeatures() {
 	if ( mvkOSVersionIsAtLeast(13.0) ) {
 		_metalFeatures.mslVersionEnum = MTLLanguageVersion2_2;
 		_metalFeatures.placementHeaps = getMVKConfig().useMTLHeap;
-#if MVK_OS_SIMULATOR
-		_metalFeatures.nativeTextureSwizzle = false;
-#else
 		_metalFeatures.nativeTextureSwizzle = true;
-#endif
+
 		if (supportsMTLGPUFamily(Apple3)) {
 			_metalFeatures.native3DCompressedTextures = true;
 		}
@@ -2448,9 +2445,10 @@ void MVKPhysicalDevice::initMetalFeatures() {
 #endif
 	}
 
-// iOS and tvOS adjustments necessary when running on the simulator.
+// iOS, tvOS and visionOS adjustments necessary when running on the simulator.
 #if MVK_OS_SIMULATOR
 	_metalFeatures.mtlBufferAlignment = 256;	// Even on Apple Silicon
+	_metalFeatures.nativeTextureSwizzle = false;
 #endif
 
 	// Argument buffers
@@ -2492,8 +2490,12 @@ void MVKPhysicalDevice::initMetalFeatures() {
 #if MVK_MACOS
 	// On macOS, if we couldn't query supported sample points (on macOS 11),
 	// but the platform can support immediate-mode sample points, indicate that here.
-	if (!_metalFeatures.counterSamplingPoints && mvkOSVersionIsAtLeast(10.15) && !supportsMTLGPUFamily(Apple1)) {  \
-		_metalFeatures.counterSamplingPoints = MVK_COUNTER_SAMPLING_AT_DRAW | MVK_COUNTER_SAMPLING_AT_DISPATCH | MVK_COUNTER_SAMPLING_AT_BLIT;  \
+	if (!_metalFeatures.counterSamplingPoints && mvkOSVersionIsAtLeast(10.15) && !supportsMTLGPUFamily(Apple1)) {
+		_metalFeatures.counterSamplingPoints = MVK_COUNTER_SAMPLING_AT_DRAW | MVK_COUNTER_SAMPLING_AT_DISPATCH | MVK_COUNTER_SAMPLING_AT_BLIT;
+	}
+	// The macOS 10.15 AMD Metal driver crashes if you attempt to sample on an empty blit encoder
+	if ((_metalFeatures.counterSamplingPoints & MVK_COUNTER_SAMPLING_AT_BLIT) && _properties.vendorID == kAMDVendorId && !mvkOSVersionIsAtLeast(11)) {
+		_metalFeatures.counterSamplingPoints &= ~MVK_COUNTER_SAMPLING_AT_BLIT;
 	}
 #endif
 
@@ -2541,6 +2543,7 @@ void MVKPhysicalDevice::initFeatures() {
     _features.textureCompressionASTC_LDR = true;
 
 	_features.dualSrcBlend = true;
+	_features.depthClamp = true;
 
     if (supportsMTLGPUFamily(Apple3)) {
         _features.occlusionQueryPrecise = true;
@@ -2548,6 +2551,7 @@ void MVKPhysicalDevice::initFeatures() {
 
 	if (supportsMTLGPUFamily(Apple3)) {
 		_features.tessellationShader = true;
+		_features.shaderTessellationAndGeometryPointSize = true;
 	}
 #endif
 
@@ -2569,13 +2573,9 @@ void MVKPhysicalDevice::initFeatures() {
 
 	_features.dualSrcBlend = true;
 
-#if MVK_OS_SIMULATOR
-	_features.depthClamp = false;
-#else
 	if (supportsMTLGPUFamily(Apple2)) {
 		_features.depthClamp = true;
 	}
-#endif
 
 	if (supportsMTLGPUFamily(Apple3)) {
 		_features.tessellationShader = true;
@@ -2593,6 +2593,11 @@ void MVKPhysicalDevice::initFeatures() {
 	if (supportsMTLGPUFamily(Apple6)) {
         _features.shaderResourceMinLod = true;
 	}
+#endif
+
+// iOS, tvOS and visionOS adjustments necessary when running on the simulator.
+#if MVK_OS_SIMULATOR
+	_features.depthClamp = false;
 #endif
 
 #if MVK_MACOS
@@ -3531,9 +3536,9 @@ void MVKPhysicalDevice::logGPUInfo() {
 
 	NSUUID* nsUUID = [[NSUUID alloc] initWithUUIDBytes: _properties.pipelineCacheUUID];		// temp retain
 	MVKLogInfo(logMsg.c_str(), getName(), devTypeStr.c_str(),
-			   _properties.vendorID, _properties.deviceID, nsUUID.UUIDString.UTF8String,
-			   getRecommendedMaxWorkingSetSize() / MEBI, getCurrentAllocatedSize() / MEBI,
-			   SPIRVToMSLConversionOptions::printMSLVersion(_metalFeatures.mslVersion).c_str());
+             _properties.vendorID, _properties.deviceID, nsUUID.UUIDString.UTF8String,
+             getRecommendedMaxWorkingSetSize() / MEBI, getCurrentAllocatedSize() / MEBI,
+             mvk::SPIRVToMSLConversionOptions::printMSLVersion(_metalFeatures.mslVersion).c_str());
 	[nsUUID release];																		// temp release
 }
 
@@ -4537,7 +4542,7 @@ uint32_t MVKDevice::getFirstViewIndexInMetalPass(uint32_t viewMask, uint32_t pas
 	uint32_t mask = viewMask;
 	uint32_t startView = 0, viewCount = 0;
 	if ( !_physicalDevice->canUseInstancingForMultiview() ) {
-		for (uint32_t i = 0; mask != 0; ++i) {
+		while (mask != 0) {
 			mask = mvkGetNextViewMaskGroup(mask, &startView, &viewCount);
 			while (passIdx-- > 0 && viewCount-- > 0) {
 				startView++;
