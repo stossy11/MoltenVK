@@ -141,19 +141,34 @@ std::string MVKPipelineLayout::getLogDescription(std::string indent) {
 	return descStr.str();
 }
 
+bool MVKPipelineLayout::isUsingMetalArgumentBuffers() {
+	return MVKDeviceTrackingMixin::isUsingMetalArgumentBuffers() && _canUseMetalArgumentBuffers;
+}
+
 MVKPipelineLayout::MVKPipelineLayout(MVKDevice* device,
                                      const VkPipelineLayoutCreateInfo* pCreateInfo) : MVKVulkanAPIDeviceObject(device) {
 
+	_canUseMetalArgumentBuffers = false;
+	uint32_t dslCnt = pCreateInfo->setLayoutCount;
+	_descriptorSetLayouts.reserve(dslCnt);
+	for (uint32_t i = 0; i < dslCnt; i++) {
+		MVKDescriptorSetLayout* pDescSetLayout = (MVKDescriptorSetLayout*)pCreateInfo->pSetLayouts[i];
+		pDescSetLayout->retain();
+		_descriptorSetLayouts.push_back(pDescSetLayout);
+		_canUseMetalArgumentBuffers = _canUseMetalArgumentBuffers || pDescSetLayout->isUsingMetalArgumentBuffers();
+	}
+
 	// For pipeline layout compatibility (“compatible for set N”),
 	// consume the Metal resource indexes in this order:
-	//   - Fixed count of argument buffers for descriptor sets (if using Metal argument buffers).
+	//   - An argument buffer for each descriptor set (if using Metal argument buffers).
 	//   - Push constants
 	//   - Descriptor set content
 
-	// If we are using Metal argument buffers, consume a fixed number
-	// of buffer indexes for the Metal argument buffers themselves.
+	// If we are using Metal argument buffers, consume a number of
+	// buffer indexes covering all descriptor sets for the Metal
+	// argument buffers themselves.
 	if (isUsingMetalArgumentBuffers()) {
-		_mtlResourceCounts.addArgumentBuffers(kMVKMaxDescriptorSetCount);
+		_mtlResourceCounts.addArgumentBuffers(dslCnt);
 	}
 
 	// Add push constants from config
@@ -172,13 +187,8 @@ MVKPipelineLayout::MVKPipelineLayout(MVKDevice* device,
 
 	// Add descriptor set layouts, accumulating the resource index offsets used by the corresponding DSL,
 	// and associating the current accumulated resource index offsets with each DSL as it is added.
-	uint32_t dslCnt = pCreateInfo->setLayoutCount;
-	_descriptorSetLayouts.reserve(dslCnt);
 	for (uint32_t i = 0; i < dslCnt; i++) {
-		MVKDescriptorSetLayout* pDescSetLayout = (MVKDescriptorSetLayout*)pCreateInfo->pSetLayouts[i];
-		pDescSetLayout->retain();
-		_descriptorSetLayouts.push_back(pDescSetLayout);
-
+		MVKDescriptorSetLayout* pDescSetLayout = _descriptorSetLayouts[i];
 		MVKShaderResourceBinding adjstdDSLRezOfsts = _mtlResourceCounts;
 		MVKShaderResourceBinding adjstdDSLRezCnts = pDescSetLayout->_mtlResourceCounts;
 		if (pDescSetLayout->isUsingMetalArgumentBuffers()) {
@@ -1824,6 +1834,7 @@ void MVKGraphicsPipeline::initShaderConversionConfig(SPIRVToMSLConversionConfigu
 	shaderConfig.options.mslOptions.enable_frag_depth_builtin = pixFmts->isDepthFormat(pixFmts->getMTLPixelFormat(pRendInfo->depthAttachmentFormat));
 	shaderConfig.options.mslOptions.enable_frag_stencil_ref_builtin = pixFmts->isStencilFormat(pixFmts->getMTLPixelFormat(pRendInfo->stencilAttachmentFormat));
     shaderConfig.options.shouldFlipVertexY = getMVKConfig().shaderConversionFlipVertexY;
+    shaderConfig.options.shouldFixupClipSpace = isDepthClipNegativeOneToOne(pCreateInfo);
     shaderConfig.options.mslOptions.swizzle_texture_samples = _fullImageViewSwizzle && !mtlFeats.nativeTextureSwizzle;
     shaderConfig.options.mslOptions.tess_domain_origin_lower_left = pTessDomainOriginState && pTessDomainOriginState->domainOrigin == VK_TESSELLATION_DOMAIN_ORIGIN_LOWER_LEFT;
     shaderConfig.options.mslOptions.multiview = mvkIsMultiview(pRendInfo->viewMask);
@@ -2048,6 +2059,21 @@ bool MVKGraphicsPipeline::isRasterizationDisabled(const VkGraphicsPipelineCreate
 			 ((pCreateInfo->pRasterizationState->cullMode == VK_CULL_MODE_FRONT_AND_BACK) && !isDynamicState(CullMode) &&
 			  pCreateInfo->pInputAssemblyState &&
 			  (mvkMTLPrimitiveTopologyClassFromVkPrimitiveTopology(pCreateInfo->pInputAssemblyState->topology) == MTLPrimitiveTopologyClassTriangle))));
+}
+
+// We ask SPIRV-Cross to fix up the clip space from [-w, w] to [0, w] if a
+// VkPipelineViewportDepthClipControlCreateInfoEXT is provided with negativeOneToOne enabled.
+bool MVKGraphicsPipeline::isDepthClipNegativeOneToOne(const VkGraphicsPipelineCreateInfo* pCreateInfo) {
+	if (!pCreateInfo->pViewportState) {
+		return false;
+	}
+	for (const auto* next = (VkBaseInStructure*)pCreateInfo->pViewportState->pNext; next; next = next->pNext) {
+		switch (next->sType) {
+			case VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_DEPTH_CLIP_CONTROL_CREATE_INFO_EXT: return ((VkPipelineViewportDepthClipControlCreateInfoEXT*)next)->negativeOneToOne;
+			default: break;
+		}
+	}
+	return false;
 }
 
 MVKMTLFunction MVKGraphicsPipeline::getMTLFunction(SPIRVToMSLConversionConfiguration& shaderConfig,
@@ -2703,7 +2729,8 @@ namespace mvk {
 				opt.entryPointStage,
 				opt.tessPatchKind,
 				opt.numTessControlPoints,
-				opt.shouldFlipVertexY);
+				opt.shouldFlipVertexY,
+				opt.shouldFixupClipSpace);
 	}
 
 	template<class Archive>

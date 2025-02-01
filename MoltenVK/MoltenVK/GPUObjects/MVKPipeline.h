@@ -82,6 +82,9 @@ public:
 	/** Returns a text description of this layout. */
 	std::string getLogDescription(std::string indent = "");
 
+	/** Overridden because pipeline descriptor sets may be marked as discrete and not use an argument buffer. */
+	bool isUsingMetalArgumentBuffers() override;
+
 	/** Constructs an instance for the specified device. */
 	MVKPipelineLayout(MVKDevice* device, const VkPipelineLayoutCreateInfo* pCreateInfo);
 
@@ -98,6 +101,7 @@ protected:
 	MVKSmallVector<VkPushConstantRange> _pushConstants;
 	MVKShaderResourceBinding _mtlResourceCounts;
 	MVKShaderResourceBinding _pushConstantsMTLResourceIndexes;
+	bool _canUseMetalArgumentBuffers;
 };
 
 
@@ -371,6 +375,7 @@ protected:
     void addFragmentOutputToPipeline(MTLRenderPipelineDescriptor* plDesc, const VkGraphicsPipelineCreateInfo* pCreateInfo);
     bool isRenderingPoints(const VkGraphicsPipelineCreateInfo* pCreateInfo);
     bool isRasterizationDisabled(const VkGraphicsPipelineCreateInfo* pCreateInfo);
+    bool isDepthClipNegativeOneToOne(const VkGraphicsPipelineCreateInfo* pCreateInfo);
 	bool verifyImplicitBuffer(bool needsBuffer, MVKShaderImplicitRezBinding& index, MVKShaderStage stage, const char* name);
 	uint32_t getTranslatedVertexBinding(uint32_t binding, uint32_t translationOffset, uint32_t maxBinding);
 	uint32_t getImplicitBufferIndex(MVKShaderStage stage, uint32_t bufferIndexOffset);
