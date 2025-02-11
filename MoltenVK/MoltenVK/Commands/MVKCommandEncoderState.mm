@@ -681,6 +681,7 @@ void MVKResourcesCommandEncoderState::encodeMetalArgumentBuffer(MVKShaderStage s
 			auto* dslBind = dsLayout->getBindingAt(dslBindIdx);
 			if (dslBind->getApplyToStage(stage) && shaderBindingUsage.getBit(dslBindIdx)) {
 				shouldBindArgBuffToStage = true;
+				if (getDevice()->hasResidencySet()) continue;
 				uint32_t elemCnt = dslBind->getDescriptorCount(descSet->getVariableDescriptorCount());
 				for (uint32_t elemIdx = 0; elemIdx < elemCnt; elemIdx++) {
 					uint32_t descIdx = dslBind->getDescriptorIndex(elemIdx);
@@ -965,6 +966,7 @@ void MVKGraphicsResourcesCommandEncoderState::encodeImpl(uint32_t stage) {
                        });
 
 	} else if (!forTessellation && stage == kMVKGraphicsStageRasterization) {
+        auto& shaderStage = _shaderStageResourceBindings[kMVKShaderStageVertex];
         encodeBindings(kMVKShaderStageVertex, "vertex", fullImageViewSwizzle,
 					   [pipeline, isDynamicVertexStride](MVKCommandEncoder* cmdEncoder, MVKMTLBufferBinding& b)->void {
                            // The app may have bound more vertex attribute buffers than used by the pipeline.
@@ -991,11 +993,18 @@ void MVKGraphicsResourcesCommandEncoderState::encodeImpl(uint32_t stage) {
                                b.isDirty = true;	// We haven't written it out, so leave dirty until next time.
 						   }
                        },
-                       [](MVKCommandEncoder* cmdEncoder, MVKMTLBufferBinding& b, MVKArrayRef<const uint32_t> s)->void {
+                       [&shaderStage](MVKCommandEncoder* cmdEncoder, MVKMTLBufferBinding& b, MVKArrayRef<const uint32_t> s)->void {
                            cmdEncoder->setVertexBytes(cmdEncoder->_mtlRenderEncoder,
                                                       s.data(),
                                                       s.byteSize(),
                                                       b.index);
+                           for (auto& bufb : shaderStage.bufferBindings) {
+                               if (bufb.index == b.index) {
+                                   // Vertex attribute occupying the same index should be marked dirty
+                                   // so it will be updated when enabled
+                                   bufb.markDirty();
+                               }
+                           }
                        },
                        [](MVKCommandEncoder* cmdEncoder, MVKMTLTextureBinding& b)->void {
                            [cmdEncoder->_mtlRenderEncoder setVertexTexture: b.mtlTexture

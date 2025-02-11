@@ -1450,7 +1450,7 @@ bool MVKGraphicsPipeline::addVertexInputToPipeline(T* inputDesc,
 
     // Vertex buffer bindings
 	bool isVtxStrideStatic = !isDynamicState(VertexStride);
-	uint32_t maxBinding = 0;
+	int32_t maxBinding = -1;
 	uint32_t vbCnt = pVI->vertexBindingDescriptionCount;
     for (uint32_t i = 0; i < vbCnt; i++) {
         const VkVertexInputBindingDescription* pVKVB = &pVI->pVertexBindingDescriptions[i];
@@ -1462,7 +1462,7 @@ bool MVKGraphicsPipeline::addVertexInputToPipeline(T* inputDesc,
                 return false;
             }
 
-			maxBinding = max(pVKVB->binding, maxBinding);
+			maxBinding = max<int32_t>(pVKVB->binding, maxBinding);
 			uint32_t vbIdx = getMetalBufferIndexForVertexAttributeBinding(pVKVB->binding);
 			_isVertexInputBindingUsed[vbIdx] = true;
 			auto vbDesc = inputDesc.layouts[vbIdx];
@@ -1879,8 +1879,13 @@ void MVKGraphicsPipeline::initReservedVertexAttributeBufferCount(const VkGraphic
 		// This value will be worst case, as some synthetic buffers may end up being shared.
 		for (uint32_t vaIdx = 0; vaIdx < vaCnt; vaIdx++) {
 			const VkVertexInputAttributeDescription* pVKVA = &pVI->pVertexAttributeDescriptions[vaIdx];
-			if ((pVKVA->binding == pVKVB->binding) && (pVKVA->offset + getPixelFormats()->getBytesPerBlock(pVKVA->format) > pVKVB->stride)) {
-				xltdBuffCnt++;
+
+			if (pVKVA->binding == pVKVB->binding) {
+				uint32_t attrSize = getPixelFormats()->getBytesPerBlock(pVKVA->format);
+				uint32_t vaOffset = pVKVA->offset;
+				if (vaOffset && vaOffset + attrSize > pVKVB->stride) {
+					xltdBuffCnt++;
+				}
 			}
 		}
 	}
@@ -2063,14 +2068,14 @@ bool MVKGraphicsPipeline::isRasterizationDisabled(const VkGraphicsPipelineCreate
 
 // We ask SPIRV-Cross to fix up the clip space from [-w, w] to [0, w] if a
 // VkPipelineViewportDepthClipControlCreateInfoEXT is provided with negativeOneToOne enabled.
+// Must ignore allowed bad pViewportState pointer if rasterization is disabled.
 bool MVKGraphicsPipeline::isDepthClipNegativeOneToOne(const VkGraphicsPipelineCreateInfo* pCreateInfo) {
-	if (!pCreateInfo->pViewportState) {
-		return false;
-	}
-	for (const auto* next = (VkBaseInStructure*)pCreateInfo->pViewportState->pNext; next; next = next->pNext) {
-		switch (next->sType) {
-			case VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_DEPTH_CLIP_CONTROL_CREATE_INFO_EXT: return ((VkPipelineViewportDepthClipControlCreateInfoEXT*)next)->negativeOneToOne;
-			default: break;
+	if (_isRasterizing && pCreateInfo->pViewportState ) {
+		for (const auto* next = (VkBaseInStructure*)pCreateInfo->pViewportState->pNext; next; next = next->pNext) {
+			switch (next->sType) {
+				case VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_DEPTH_CLIP_CONTROL_CREATE_INFO_EXT: return ((VkPipelineViewportDepthClipControlCreateInfoEXT*)next)->negativeOneToOne;
+				default: break;
+			}
 		}
 	}
 	return false;
